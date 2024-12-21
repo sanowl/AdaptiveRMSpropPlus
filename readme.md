@@ -1,0 +1,1 @@
+this bascily a smart trainer
