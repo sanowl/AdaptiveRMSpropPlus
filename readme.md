@@ -1,1 +1,1 @@
-this bascily a smart trainer
+this bascily a smart trainer LIKE DUHHHH
