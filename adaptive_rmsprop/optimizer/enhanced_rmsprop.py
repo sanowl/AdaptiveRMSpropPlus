@@ -13,6 +13,18 @@ class EnhancedRMSpropTF(Optimizer):
     - Cyclical learning rate with warmup
     - Adaptive gradient noise
     - Layer-wise adaptive momentum
+
+    Args:
+        params (Iterable[torch.nn.Parameter]): Iterable of parameters to optimize
+        lr (float, optional): Learning rate (default: 1e-2)
+        alpha (float, optional): Smoothing constant (default: 0.99)
+        eps (float, optional): Term added to denominator for numerical stability (default: 1e-8)
+        weight_decay (float, optional): Weight decay (L2 penalty) (default: 0)
+        momentum (float, optional): Momentum factor (default: 0)
+        centered (bool, optional): If True, compute centered RMSprop (default: False)
+        noise_scale (float, optional): Scale of gradient noise (default: 1e-6)
+        warmup_steps (int, optional): Number of warmup steps (default: 1000)
+        lr_cycles (int, optional): Number of learning rate cycles (default: 3)
     """
     
     def __init__(
@@ -73,7 +85,15 @@ class EnhancedRMSpropTF(Optimizer):
 
     @torch.no_grad()
     def step(self, closure: Optional[Callable[[], float]] = None) -> Optional[float]:
-        """Performs a single optimization step with enhanced features."""
+        """Performs a single optimization step with enhanced features.
+        
+        Args:
+            closure (callable, optional): A closure that reevaluates the model and
+                returns the loss. Optional for most optimizers.
+
+        Returns:
+            Optional[float]: The loss value returned by the closure, if provided.
+        """
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -138,4 +158,4 @@ class EnhancedRMSpropTF(Optimizer):
                 else:
                     p.addcdiv_(grad, avg, value=-current_lr)
 
-        return loss
+        return loss 

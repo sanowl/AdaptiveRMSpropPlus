@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import math
 from typing import Dict, Any
-from enhanced_rmsprop import EnhancedRMSpropTF
+from adaptive_rmsprop.optimizer import EnhancedRMSpropTF
 
 class SimpleModel(nn.Module):
     def __init__(self):
@@ -179,4 +179,4 @@ def test_state_dict():
     assert optimizer.state.keys() == new_optimizer.state.keys()
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    pytest.main([__file__]) 
