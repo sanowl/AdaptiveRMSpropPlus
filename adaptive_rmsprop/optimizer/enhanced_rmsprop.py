@@ -130,7 +130,11 @@ class EnhancedRMSpropTF(Optimizer):
             return lr * (step / self.warmup_steps)
 
         cycle_length = max(1, self.lr_cycles * max(1, self.warmup_steps))
-        cycle_progress = ((step - self.warmup_steps) % cycle_length) / cycle_length
+        cycle_step = step - self.warmup_steps
+        if self.warmup_steps == 0:
+            cycle_step = max(0, step - 1)
+
+        cycle_progress = (cycle_step % cycle_length) / cycle_length
         cosine_scale = 0.5 * (1.0 + math.cos(math.pi * cycle_progress))
         return lr * (lr_floor + (1.0 - lr_floor) * cosine_scale)
 
