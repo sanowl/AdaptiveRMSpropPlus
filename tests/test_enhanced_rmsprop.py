@@ -1,8 +1,7 @@
 import pytest
 import torch
 import torch.nn as nn
-import math
-from typing import Dict, Any
+
 from adaptive_rmsprop.optimizer import EnhancedRMSpropTF
 
 class SimpleModel(nn.Module):
@@ -37,13 +36,22 @@ def sample_batch():
 def test_optimizer_initialization():
     """Test if optimizer initializes correctly"""
     model = SimpleModel()
-    
+
     opt = EnhancedRMSpropTF(model.parameters(), lr=1e-3)
     assert opt.defaults["lr"] == 1e-3
     assert opt.defaults["alpha"] == 0.99
-    
+
     with pytest.raises(ValueError):
         EnhancedRMSpropTF(model.parameters(), lr=-1)
+
+    with pytest.raises(ValueError):
+        EnhancedRMSpropTF(model.parameters(), alpha=1.0)
+
+    with pytest.raises(ValueError):
+        EnhancedRMSpropTF(model.parameters(), gradient_clip=0)
+
+    with pytest.raises(ValueError):
+        EnhancedRMSpropTF(model.parameters(), warmup_steps=-1)
 
 def test_noise_injection():
     """Test noise injection mechanism"""
@@ -97,6 +105,23 @@ def test_cyclic_learning_rate():
     lr_0 = optimizer._compute_cyclic_lr(0)
     lr_5 = optimizer._compute_cyclic_lr(5)
     assert lr_0 < lr_5
+
+
+def test_cyclic_learning_rate_supports_floor_and_no_warmup():
+    """Test cyclic learning rate floor and no-warmup mode"""
+    model = SimpleModel()
+    optimizer = EnhancedRMSpropTF(
+        model.parameters(),
+        lr=0.1,
+        warmup_steps=0,
+        lr_cycles=2,
+        min_lr_ratio=0.25,
+    )
+
+    lrs = [optimizer._compute_cyclic_lr(step) for step in range(10)]
+    assert max(lrs) <= 0.1
+    assert min(lrs) >= 0.025
+    assert lrs[0] == pytest.approx(0.1)
 
 def test_epsilon_adjustment():
     """Test epsilon adjustment"""
@@ -161,6 +186,90 @@ def test_momentum_buffer():
         for p in group['params']:
             state = optimizer.state[p]
             assert 'momentum_buffer' in state
+
+
+def test_gradient_clip_limits_optimizer_statistics():
+    """Test that gradient clipping is applied before square-average update"""
+    param = torch.nn.Parameter(torch.tensor([1.0]))
+    optimizer = EnhancedRMSpropTF(
+        [param],
+        lr=0.1,
+        alpha=0.0,
+        eps=1e-8,
+        noise_scale=0.0,
+        warmup_steps=0,
+        gradient_clip=2.0,
+    )
+    param.grad = torch.tensor([10.0])
+
+    optimizer.step()
+
+    state = optimizer.state[param]
+    assert state["square_avg"].item() == pytest.approx(4.0)
+
+
+def test_decoupled_weight_decay_with_zero_gradient():
+    """Test AdamW-style weight decay path"""
+    param = torch.nn.Parameter(torch.tensor([1.0]))
+    optimizer = EnhancedRMSpropTF(
+        [param],
+        lr=0.1,
+        alpha=0.0,
+        eps=1e-8,
+        weight_decay=0.1,
+        noise_scale=0.0,
+        warmup_steps=0,
+        decoupled_weight_decay=True,
+    )
+    param.grad = torch.zeros_like(param)
+
+    optimizer.step()
+
+    assert param.item() == pytest.approx(0.99)
+
+
+def test_maximize_moves_parameter_up_gradient():
+    """Test maximize mode reverses update direction"""
+    param = torch.nn.Parameter(torch.tensor([1.0]))
+    optimizer = EnhancedRMSpropTF(
+        [param],
+        lr=0.1,
+        alpha=0.0,
+        eps=1e-8,
+        noise_scale=0.0,
+        warmup_steps=0,
+        maximize=True,
+    )
+    param.grad = torch.ones_like(param)
+
+    optimizer.step()
+
+    assert param.item() > 1.0
+
+
+def test_parameter_groups_use_their_own_learning_rates():
+    """Test per-group learning rates are respected by the scheduler"""
+    first = torch.nn.Parameter(torch.tensor([1.0]))
+    second = torch.nn.Parameter(torch.tensor([1.0]))
+    optimizer = EnhancedRMSpropTF(
+        [
+            {"params": [first], "lr": 0.1},
+            {"params": [second], "lr": 0.01},
+        ],
+        alpha=0.0,
+        eps=1e-8,
+        noise_scale=0.0,
+        warmup_steps=0,
+    )
+    first.grad = torch.ones_like(first)
+    second.grad = torch.ones_like(second)
+
+    optimizer.step()
+
+    first_delta = 1.0 - first.item()
+    second_delta = 1.0 - second.item()
+    assert first_delta > second_delta
+    assert first_delta / second_delta == pytest.approx(10.0, rel=1e-4)
 
 def test_state_dict():
     """Test state dict save/load"""
